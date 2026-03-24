@@ -1,0 +1,1 @@
+{"uuid":"474d19ca-c63b-4a40-865e-de990c1a2c03","name":"tests.CrudApiTest","children":["2094b199-1a4b-4a49-a6b1-ceb40ae8e774"],"befores":[{"name":"setupApiSpec","status":"passed","stage":"finished","description":"","steps":[],"attachments":[],"parameters":[],"start":1774339201651,"stop":1774339202560}],"afters":[],"start":1774339201565,"stop":1774339204532}
