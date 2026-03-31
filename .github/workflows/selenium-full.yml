@@ -64,7 +64,9 @@ jobs:
         with: { name: allure-results-firefox, path: allure-results/ }
       - name: Tạo và Publish Allure Report
         uses: simple-elf/allure-report-action@master
+        if: always()
         with:
           allure_results: allure-results
           gh_pages: gh-pages
           allure_report: allure-report
+          github_token: ${{ secrets.GITHUB_TOKEN }}
