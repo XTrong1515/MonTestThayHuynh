@@ -1,0 +1,7 @@
+[
+  { "username": "standard_user",   "password": "secret_sauce",  "role": "user",  "expectSuccess": true, "description": "JSON - Đăng nhập hộp lệ" },
+  { "username": "locked_out_user", "password": "secret_sauce",  "role": "user",  "expectSuccess": false, "description": "JSON - User bị khoá" },
+  { "username": "admin_user",      "password": "admin_pass",    "role": "admin", "expectSuccess": false, "description": "JSON - Sai mật khẩu" },
+  { "username": "problem_user",    "password": "secret_sauce",  "role": "user",  "expectSuccess": true, "description": "JSON - User có lỗi giao diện" },
+  { "username": "performance_glitch_user", "password": "secret_sauce", "role": "user", "expectSuccess": true, "description": "JSON - User chậm trễ" }
+]

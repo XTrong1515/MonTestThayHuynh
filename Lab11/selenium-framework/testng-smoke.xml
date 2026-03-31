@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="Smoke Test Suite" parallel="methods" thread-count="3">
+    <listeners>
+        <listener class-name="framework.utils.RetryListener"/>
+    </listeners>
+    <test name="Smoke Tests">
+        <!-- Optional parameters: browser, env -->
+        <parameter name="browser" value="chrome"/>
+        <parameter name="env" value="dev"/>
+        <groups>
+            <run>
+                <include name="smoke"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="tests.LoginTest"/>
+            <class name="tests.CartTest"/>
+        </classes>
+    </test>
+</suite>

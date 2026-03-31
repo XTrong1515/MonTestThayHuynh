@@ -1,0 +1,11 @@
+target/
+.idea/
+*.iml
+screenshots/
+.env
+*.log
+allure-results/
+allure-report/
+lab9.txt
+lab11.txt
+lab11_walkthrough.md

@@ -1,0 +1,874 @@
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 1 
+ KIỂM TH Ử PHẦN MỀM 
+TÀI LI ỆU TH ỰC HÀNH  
+ 
+ 
+LAB 9 — PAGE OBJECT MODEL NÂNG CAO + DATA -DRIVEN TESTING  
+ 
+ 
+Nội dung  Chi ti ết 
+Chủ đề Page Object Model (POM), BasePage, BaseTest, Data -Driven 
+Testing (DDT)  
+Kỹ năng đ ạt được Xây d ựng framework test chu ẩn, tách d ữ liệu khỏi code  
+Công c ụ Selenium 4.x, TestNG 7.x, Apache POI, Jackson, Java Faker, 
+Maven  
+Thời gian  4 tiết | Điểm số: 10 đi ểm 
+Điều kiện tiên quy ết Đã th ực hiện xong các lab trư ớc (Selenium WebDriver cơ b ản, 
+TestNG Suites)  
+Website th ực hành  saucedemo.com, demoqa.com  
+ 
+ Mục tiêu bài lab  
+Sau khi hoàn thành Lab 9, sinh viên có th ể: 
+– Giải thích t ại sao c ần Page Object Model và khi nào nên áp d ụng 
+– Xây d ựng BasePage và BaseTest tái s ử dụng cho toàn d ự án 
+– Thiết kế cấu trúc thư m ục project chu ẩn  
+– Đọc test data t ừ file Excel (.xlsx) và JSON b ằng code Java  
+– Triển khai ConfigReader đ ể framework ch ạy được trên nhi ều môi trư ờng 
+(dev/staging/prod)  
+– Viết RetryAnalyzer đ ể tự động ch ạy lại test b ị fail do l ỗi mạng/flakiness  
+– Tích h ợp @DataProvider v ới ngu ồn dữ liệu bên ngoài  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 2 
+  
+I. TÓM T ẮT LÝ THUY ẾT 
+Trang web tham khảo: 
+- https://www.automationtestinginsider.com/p/selenium -vi.html  
+- https://blog.ntechdevelopers.com/test -automation -approach -phuong -phap -kiem -thu-tu-dong/   
+- OBJECT  
+- https://200lab.io/blog/autmation -testing -la-gi MODEL  NÂNG CAO + DATA -IVETESTING  
+- https://centic9.github.io/github -version -statistics/resultsCurrent.html?type=all  
+9.1 Vấn đề với cách vi ết test (Naive Test) . 
+Khi m ới học Selenium  , https://www.selenium.dev/ ,  hầu hết mọi ngư ời viết test theo ki ểu 
+nhúng t ất cả vào m ột class: locator, logic nghi ệp vụ và dữ liệu test đ ều lẫn lộn. Cách này 
+hoạt động tốt khi m ới bắt đầu, nhưng gây ra 4 v ấn đề nghiêm tr ọng trong d ự án th ực tế có 
+nhiều tính năng và nhi ều ngư ời cùng làm:  
+Vấn đề Biểu hiện cụ thể Hậu qu ả trong d ự án th ực 
+Code trùng l ặp 
+(Duplication)  By.id("username") xu ất hiện 
+ở 10 class khác nhau  Khi UI thay đ ổi id → s ửa 10 
+chỗ, dễ bỏ sót, m ất nhiều giờ 
+Kết dính ch ặt (Tight 
+coupling)  Logic đi ều hướng trộn lẫn với 
+assertion trong cùng method  Không tái s ử dụng đư ợc step, 
+khó đ ọc, khó debug  
+Dữ liệu cứng 
+(Hardcoded data)  username="standard_user" 
+nằm trực tiếp trong code  Không ch ạy được ở môi trư ờng 
+staging/production khác  
+Không th ể mở rộng Thêm 1 test case m ới = copy -
+paste toàn b ộ method  Team 5 ngư ời cùng s ửa 1 file → 
+conflict git liên t ục 
+ 
+So sánh tr ực tiếp Naive Test vs POM Test:  
+// NAIVE TEST — Antipattern, tuy ệt đối tránh trong d ự án thực 
+@Test  
+public void testLoginSuccess_WRONG() {  
+    WebDriverManager.chromedriver().setup();  
+    WebDriver driver = new ChromeDriver();  
+    driver.get("https://www.saucedemo.com");  
+    driver.findElement(By.id("user -name")).sendKeys("standard_user");  // hardcode 
+locator  
+    driver.findElement(By.id("password")).sendKeys("secret_sauce");    // hardcode data  
+    driver.findElement(By.id("login -button")).click();  
+    Assert.assertTrue(driver.getCurrentUrl().contains("inventory"));  
+    driver.quit();  
+} 
+ 
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 3 
+ // POM TEST — Chuẩn frame  
+@Test  
+public void testLoginSuccess_CORRECT() {  
+    LoginPage loginPage = new LoginPage(getDriver());  // Page Object  
+    loginPage.login(config.getUsername(), config.getPassword());  // data t ừ config  
+    Assert.assertTrue(new InventoryPage(getDriver()).isLoaded(), "Trang inventory chưa 
+load");  
+} 
+// Khi id="user -name" đổi thành id="username" → ch ỉ sửa LoginPage.java, không đ ụng test 
+class  
+9.2 Page Object Model - Nguyên t ắc và Ki ến trúc  POM  
+Tham kh ảo thêm c ác tài liệu:  
+- https://anhtester.com/lesson/playwright -typescript -bai-10-page -object -model -pom-
+nguyen -tac-va-cau-truc-nen-tang-trong -playwright  
+- https://viblo.asia/p/page -object -model -pom-trong -selenium -bWrZn7Mwlxw  
+- https://vananhtooo.wordpress.com/2017/09/12/gioi -thieu -ve-page -object -model -
+framework/  
+- https://viettuts.vn/selenium/page -object -model -trong -selenium  
+ 
+ Nguyên t ắc cốt lõi c ủa POM  
+Nguyên t ắc 1: Mỗi trang web là m ột class Java:  
+  Mỗi trang (LoginPage, InventoryPage, CartPage...) đư ợc đại diện bởi một class 
+riêng.  
+  Class đó ch ứa: locator c ủa phần tử + action method tương tác v ới trang.  
+Nguyên t ắc 2:  Test class KHÔNG findElement tr ực tiếp: 
+  Test class ch ỉ gọi method c ủa Page Object.  
+  Ví dụ: loginPage.login(user, pass) thay vì 
+driver.findElement(By.id("u")).sendKeys(user)  
+Nguyên t ắc 3:  Method tr ả về Page Object (Fluent Interface):  
+  Sau khi click "Login" thành công → tr ả về InventoryPage (trang ti ếp theo).  
+  Cho phép vi ết chu ỗi: 
+loginPage.login(u,p).addFirstItemToCart().goToCart().checkout()  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 4 
+ Nguyên t ắc 4: Assertion KHÔNG n ằm trong Page Object:  
+  Page Object ch ỉ chứa hành đ ộng (action), không ki ểm tra đúng/sai.  
+  Mọi Assert.assertEquals / Assert.assertTrue n ằm trong test class.  
+ 
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 5 
+ Rút ra được Cấu trúc thư m ục project POM chu ẩn: 
+SeleniumFramework/  
+├── src/  
+│   ├── main/java/framework/  
+│   │   ├── base/  
+│   │   │   ├── BasePage.java          ← L ớp cha: waitAndClick, waitAndType, getText...  
+│   │   │   └── BaseTest.java          ← L ớp cha: setup driver, teardown, screenshot  
+│   │   ├── config/  
+│   │   │   └── ConfigReader.java      ← Đ ọc config.properties theo môi trư ờng 
+│   │   ├── pages/  
+│   │   │   ├── LoginPage.java         ← Page Object cho trang đăng nh ập 
+│   │   │   ├── InventoryPage.java     ← Page Object cho trang s ản phẩm 
+│   │   │   └── CartPage.java          ← Page Object cho trang gi ỏ hàng 
+│   │   └── utils/  
+│   │       ├── ExcelReader.java       ← Đ ọc test data t ừ file Excel .xlsx  
+│   │       ├── JsonReader.java        ← Đ ọc test data t ừ file JSON  
+│   │       ├── ScreenshotUtil.java    ← Ch ụp ảnh màn hình khi test fail  
+│   │       └── RetryAnalyzer.java     ← T ự động chạy lại test b ị fail 
+│   └── test/  
+│       ├── java/tests/  
+│       │   ├── LoginTest.java  
+│       │   ├── LoginDDTTest.java      ← Test dùng d ữ liệu từ Excel/JSON  
+│       │   └── CheckoutTest.java  
+│       └── resources/  
+│           ├── config -dev.properties  
+│           ├── config -staging.properties  
+│           ├── testdata/  
+│           │   ├── login_data.xlsx    ← D ữ liệu test đăng nh ập 
+│           │   └── users.json         ← D ữ liệu user d ạng JSON  
+│           ├── testng -smoke.xml  
+│           └── testng -regression.xml  
+└── pom.xml  
+ 
+Thêm các dependency c ần thi ết vào pom.xml:  
+<dependencies>  
+  <!-- Selenium WebDriver --> 
+  <dependency>  
+    <groupId>org.seleniumhq.selenium</groupId>  
+    <artifactId>selenium -java</artifactId>  
+    <version>4.18.1</version>  
+  </dependency>  
+  <!-- WebDriverManager --> 
+  <dependency>  
+    <groupId>io.github.bonigarcia</groupId>  
+    <artifactId>webdrivermanager</artifactId>  
+    <version>5.8.0</version>  
+  </dependency>  
+  <!-- TestNG --> 
+  <dependency>  
+    <groupId>org.testng</groupId>  
+    <artifactId>testng</artifactId>  
+    <version>7.9.0</version>  
+    <scope>test</scope>  
+  </dependency>  
+  <!-- Apache POI: Đ ọc file Excel --> 
+  <dependency>  
+    <groupId>org.apache.poi</groupId>  
+    <artifactId>poi -ooxml</artifactId>  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 6 
+     <version>5.2.5</version>  
+  </dependency>  
+  <!-- Jackson: Đ ọc/ghi JSON --> 
+  <dependency>  
+    <groupId>com.fasterxml.jackson.core</groupId>  
+    <artifactId>jackson -databind</artifactId>  
+    <version>2.17.0</version>  
+  </dependency>  
+  <!-- Java Faker: Sinh d ữ liệu test ng ẫu nhiên --> 
+  <dependency>  
+    <groupId>com.github.javafaker</groupId>  
+    <artifactId>javafaker</artifactId>  
+    <version>1.0.2</version>  
+  </dependency>  
+</dependencies>  
+ 
+9.3 BasePage - Lớp nền tảng cho m ọi Page Object  
+BasePage đóng gói t ất cả các thao tác WebDriver ph ổ biến thành các method có Explicit 
+Wait tích h ợp sẵn. M ọi Page Object đ ều extends BasePage đ ể dùng l ại các method này : 
+// BasePage.java  
+package framework.base;  
+ 
+public abstract class BasePage {  
+    protected WebDriver driver;  
+    protected WebDriverWait wait;  
+ 
+    public BasePage(WebDriver driver) {  
+        this.driver = driver;  
+        // Explicit wait 15 giây — đủ cho mạng chậm, không ch ờ lãng phí  
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(15));  
+        PageFactory.initElements(driver, this);  // Kh ởi tạo @FindBy annotations  
+    } 
+ 
+    // Chờ element clickable r ồi mới click — tránh ElementNotInteractableException  
+    protected void waitAndClick(WebElement element) {  
+        wait.until(ExpectedConditions.elementToBeClickable(element)).click();  
+    } 
+ 
+    // Xóa n ội dung cũ r ồi gõ — tránh dữ liệu bị nối thêm  
+    protected void waitAndType(WebElement element, String text) {  
+        wait.until(ExpectedConditions.visibilityOf(element));  
+        element.clear();  
+        element.sendKeys(text);  
+    } 
+ 
+    // Lấy text đã trim whitespace  
+    protected String getText(WebElement element) {  
+        return wait.until(ExpectedConditions.visibilityOf(element)).getText().trim();  
+    } 
+ 
+    // Kiểm tra hi ển thị — KHÔNG throw exception n ếu không tìm th ấy 
+    protected boolean isElementVisible(By locator) {  
+        try {  
+            return driver.findElement(locator).isDisplayed();  
+        } catch (NoSuchElementException | StaleElementReferenceException e) {  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 7 
+             return false;  
+        } 
+    } 
+ 
+    // Cuộn trang đ ến element — xử lý element n ằm ngoài viewport  
+    protected void scrollToElement(WebElement element) {  
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", 
+element);  
+    } 
+ 
+    // Chờ trang load xong — dùng sau khi đi ều hướng 
+    protected void waitForPageLoad() {  
+        wait.until(driver -> ((JavascriptExecutor) driver)  
+            .executeScript("return document.readyState").equals("complete"));  
+    } 
+ 
+    // Lấy giá tr ị attribute  
+    protected String getAttribute(WebElement element, String attr) {  
+        return wait.until(ExpectedConditions.visibilityOf(element)).getAttribute(attr);  
+    } 
+} 
+ 
+9.4 Ví d ụ Page Object th ực tế - LoginPage và InventoryPage  
+// LoginPage.java  
+package framework.pages;  
+ 
+public class LoginPage extends BasePage {  
+ 
+    // @FindBy thay th ế driver.findElement() — định nghĩa locator m ột lần duy nh ất 
+    @FindBy(id = "user -name")  
+    private WebElement usernameField;  
+ 
+    @FindBy(id = "password")  
+    private WebElement passwordField;  
+ 
+    @FindBy(id = "login -button")  
+    private WebElement loginButton;  
+ 
+    @FindBy(css = "[data -test='error']")  
+    private WebElement errorMessage;  
+ 
+    public LoginPage(WebDriver driver) { super(driver); }  
+ 
+    // Method tr ả về InventoryPage — Fluent Interface  
+    public InventoryPage login(String username, String password) {  
+        waitAndType(usernameField, username);  
+        waitAndType(passwordField, password);  
+        waitAndClick(loginButton);  
+        return new InventoryPage(driver);  
+    } 
+ 
+    // Đăng nh ập khi bi ết trước sẽ thất bại — trả về chính LoginPage  
+    public LoginPage loginExpectingFailure(String username, String password) {  
+        waitAndType(usernameField, username);  
+        waitAndType(passwordField, password);  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 8 
+         waitAndClick(loginButton);  
+        return this;  
+    } 
+ 
+    public String getErrorMessage() {  
+        return getText(errorMessage);  
+    } 
+ 
+    public boolean isErrorDisplayed() {  
+        return isElementVisible(By.cssSelector("[data -test='error']"));  
+    } 
+} 
+ 
+// InventoryPage.java  
+public class InventoryPage extends BasePage {  
+ 
+    @FindBy(css = ".inventory_list")  
+    private WebElement inventoryList;  
+ 
+    @FindBy(css = ".shopping_cart_badge")  
+    private WebElement cartBadge;  
+ 
+    @FindBy(css = ".inventory_item button")  
+    private List<WebElement> addToCartButtons;  
+ 
+    public InventoryPage(WebDriver driver) { super(driver); }  
+ 
+    // Kiểm tra trang đã load thành công  
+    public boolean isLoaded() {  
+        return isElementVisible(By.cssSelector(".inventory_list"));  
+    } 
+ 
+    // Thêm s ản phẩm đầu tiên vào gi ỏ 
+    public InventoryPage addFirstItemToCart() {  
+        waitAndClick(addToCartButtons.get(0));  
+        return this;  
+    } 
+ 
+    // Lấy số lượng item trong badge gi ỏ hàng 
+    public int getCartItemCount() {  
+        try {  
+            return Integer.parseInt(cartBadge.getText().trim());  
+        } catch (Exception e) {  
+            return 0;  // Badge không hi ển thị = giỏ hàng rỗng 
+        } 
+    } 
+ 
+    public CartPage goToCart() {  
+        driver.findElement(By.className("shopping_cart_link")).click();  
+        return new CartPage(driver);  
+    } 
+} 
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 9 
+ 9.5 BaseTest - Quản lý vòng đ ời WebDriver  
+BaseTest đ ảm nh ận việc tạo và d ọn dẹp WebDriver cho m ỗi test method. Dùng 
+ThreadLocal đ ể hỗ trợ chạy song song an toàn (đã h ọc và làm ở Lab trước): 
+// BaseTest.java  
+package framework.base;  
+ 
+public abstract class BaseTest {  
+    private static ThreadLocal<WebDriver> tlDriver = new ThreadLocal<>();  
+ 
+    protected WebDriver getDriver() { return tlDriver.get(); }  
+ 
+    @Parameters({"browser", "env"})  
+    @BeforeMethod(alwaysRun = true)  
+    public void setUp(@Optional("chrome") String browser,  
+                      @Optional("dev") String env) {  
+        // Đặt env làm System property đ ể ConfigReader đ ọc đúng file  
+        System.setProperty("env", env);  
+ 
+        WebDriver driver = DriverFactory.createDriver(browser);  
+        driver.manage().window().maximize();  
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(5));  
+        driver.get(ConfigReader.getInstance().getBaseUrl());  
+        tlDriver.set(driver);  
+    } 
+ 
+    @AfterMethod(alwaysRun = true)  
+    public void tearDown(ITestResult result) {  
+        // Chụp ảnh TRƯỚC khi quit — bắt buộc trong d ự án thực để debug  
+        if (result.getStatus() == ITestResult.FAILURE) {  
+            String screenshotPath = ScreenshotUtil.capture(getDriver(), 
+result.getName());  
+            // Đính kèm vào Allure report n ếu đang dùng Allure  
+            Allure.addAttachment("Screenshot khi fail",  
+                new ByteArrayInputStream(ScreenshotUtil.captureAsBytes(getDriver())));  
+        } 
+        if (getDriver() != null) {  
+            getDriver().quit();  
+            tlDriver.remove();  // Quan tr ọng: tránh memory leak khi ch ạy song song  
+        } 
+    } 
+} 
+ 
+9.6 Data -Driven Testing (DDT) - Tách d ữ liệu khỏi code  
+Tham khảo: 
+- https://viblo.asia/p/data -driven -testing -framework -6J3Zg9Ng5mB  
+- https://haibgit.blogspot.com/2018/10/data -driven -testing -in-robot -framework.html  
+- https://anhtester.com/lesson/cucumber -testng -bai-1-gioi-thieu -huong -phat-trien-tdd-va-bdd-
+trong -code -automation -test 
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 10 
+  
+❖ Tại sao ph ải tách d ữ liệu test ra kh ỏi code Java?  
+Trong d ự án th ực tế, QA Lead qu ản lý hàng trăm test case. Ngư ời viết test data  
+thường không ph ải là ngư ời viết code — đó có th ể là QA không bi ết lập trình,  hoặc 
+Business Analyst cung c ấp dữ liệu nghi ệp vụ. 
+Nếu dữ liệu nằm trong code Java:  
+  → M ỗi lần thêm/s ửa test case ph ải build l ại project (m ất 2-5 phút)  
+  → Ngư ời không bi ết Java không c ập nhật được 
+  → D ữ liệu production (m ật khẩu thật) có th ể lọt vào git repository  
+Nếu dữ liệu nằm trong file Excel/JSON:  
+  → QA m ở Excel, thêm dòng m ới → ch ạy lại test ngay, không c ần build  
+  → D ữ liệu nhạy cảm không commit vào git (thêm vào .gitignore)  
+  → D ễ audit: ai thêm/s ửa test case khi nào  
+ 
+Nguồn 1: @DataProvider thu ần Java — Dùng cho d ữ liệu nh ỏ, cố định: 
+// Cách đơn gi ản nhất — không cần file ngoài  
+@DataProvider(name = "loginData", parallel = true)  // parallel=true: ch ạy song song  
+public Object[][] provideLoginData() {  
+    return new Object[][] {  
+        // {username, password, expectedResult, testDescription}  
+        {"standard_user",   "secret_sauce",   "SUCCESS",  "Đăng nh ập hợp lệ"}, 
+        {"locked_out_user", "secret_sauce",   "Sorry, this user has been locked out", 
+"User bị khoá"},  
+        {"problem_user",    "secret_sauce",   "SUCCESS",  "User có v ấn đề giao diện"}, 
+        {"",                "secret_sauce",   "Username is required", "Username r ỗng"},  
+        {"standard_user",   "",               "Password is required", "Password r ỗng"},  
+        {"standard_user",   "wrongpass",      "Username and password do not match", "Sai 
+mật khẩu"}, 
+        {"<script>alert(1)","secret_sauce",  "Username and password do not match", "XSS 
+injection"},  
+    }; 
+} 
+ 
+Nguồn 2: Đ ọc từ file Excel (.xlsx) — Dùng khi QA không bi ết code:  
+// ExcelReader.java  
+public class ExcelReader {  
+ 
+    /** 
+     * Đọc toàn b ộ data từ một sheet Excel  
+     * Dòng đ ầu tiên (index 0) đư ợc coi là header — bị bỏ qua 
+     * Trả về Object[][] đ ể dùng với @DataProvider  
+     */ 
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 11 
+     public static Object[][] getData(String filePath, String sheetName) {  
+        try (FileInputStream fis = new FileInputStream(filePath);  
+             Workbook workbook = new XSSFWorkbook(fis)) {  
+ 
+            Sheet sheet = workbook.getSheet(sheetName);  
+            if (sheet == null)  
+                throw new RuntimeException("Không tìm th ấy sheet: " + sheetName);  
+ 
+            int lastRow  = sheet.getLastRowNum();  
+            int lastCol  = sheet.getRow(0).getLastCellNum();  
+            Object[][] data = new Object[lastRow][lastCol];  
+ 
+            for (int r = 1; r <= lastRow; r++) {  // B ắt đầu từ dòng 1: b ỏ header  
+                Row row = sheet.getRow(r);  
+                if (row == null) continue;  
+                for (int c = 0; c < lastCol; c++) {  
+                    Cell cell = row.getCell(c);  
+                    data[r-1][c] = getCellValue(cell);  
+                } 
+            } 
+            return data;  
+ 
+        } catch (IOException e) {  
+            throw new RuntimeException("L ỗi đọc Excel: " + filePath, e);  
+        } 
+    } 
+ 
+    // Xử lý từng kiểu dữ liệu trong cell  
+    private static String getCellValue(Cell cell) {  
+        if (cell == null) return "";  // Cell r ỗng → chu ỗi rỗng, không 
+NullPointerException  
+        return switch (cell.getCellType()) {  
+            case STRING  -> cell.getStringCellValue().trim();  
+            case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());  
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());  
+            case FORMULA -> cell.getCachedFormulaResultType() == CellType.NUMERIC  
+                           ? String.valueOf((long) cell.getNumericCellValue())  
+                           : cell.getStringCellValue();  
+            default      -> "";  
+        }; 
+    } 
+} 
+ 
+// Sử dụng trong test class:  
+@DataProvider(name = "excelLoginData")  
+public Object[][] getLoginDataFromExcel() {  
+    String path = "src/test/resources/testdata/login_data.xlsx";  
+    return ExcelReader.getData(path, "LoginCases");  
+} 
+ 
+@Test(dataProvider = "excelLoginData")  
+public void testLoginFromExcel(String username, String password, String expected) {  
+    LoginPage login = new LoginPage(getDriver());  
+    // logic test...  
+} 
+ 
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 12 
+ Nguồn 3: Đ ọc từ file JSON — Dùng cho d ữ liệu có c ấu trúc ph ức tạp: 
+// users.json — Dữ liệu dạng mảng object  
+[ 
+  { "username": "standard_user",   "password": "secret_sauce",  "role": "user",  
+"expectSuccess": true  },  
+  { "username": "locked_out_user", "password": "secret_sauce",  "role": "user",  
+"expectSuccess": false },  
+  { "username": "admin_user",      "password": "admin_pass",    "role": "admin", 
+"expectSuccess": true  }  
+] 
+ 
+// UserData.java — POJO mapping  
+public class UserData {  
+    public String username;  
+    public String password;  
+    public String role;  
+    public boolean expectSuccess;  
+} 
+ 
+// JsonReader.java  
+public class JsonReader {  
+    public static List<UserData> readUsers(String filePath) throws IOException {  
+        ObjectMapper mapper = new ObjectMapper();  
+        return mapper.readValue(new File(filePath),  
+                                new TypeReference<List<UserData>>(){});  
+    } 
+} 
+ 
+// Trong test class:  
+@DataProvider(name = "jsonUsers")  
+public Object[][] getUsersFromJson() throws IOException {  
+    List<UserData> users = 
+JsonReader.readUsers("src/test/resources/testdata/users.json");  
+    return users.stream()  
+               .map(u -> new Object[]{u.username, u.password, u.expectSuccess})  
+               .toArray(Object[][]::new);  
+} 
+9.7 ConfigReader - Chạy test trên nhi ều môi trư ờng 
+- https://cafeincode.com/loi -tren-moi-truong -staging -ma-khong -ai-chiu-sua-den-cung/  
+ 
+Trong d ự án th ực, cùng b ộ test ph ải chạy đư ợc ở dev, staging và production. 
+ConfigReader đ ọc đúng file c ấu hình theo bi ến môi trư ờng truy ền vào khi ch ạy: 
+Trong d ự án th ực, cùng b ộ test ph ải chạy đư ợc ở dev, staging và production. 
+ConfigReader đ ọc đúng file c ấu hình theo bi ến môi trư ờng truy ền vào khi ch ạy: 
+# config -dev.properties  
+base.url=https://www.saucedemo.com  
+browser=chrome  
+explicit.wait=15  
+implicit.wait=5  
+screenshot.path=target/screenshots/  
+retry.count=1  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 13 
+  
+# config -staging.properties  
+base.url=https://staging.saucedemo.com  
+browser=chrome  
+explicit.wait=20  
+implicit.wait=8  
+screenshot.path=target/screenshots/  
+retry.count=2  
+ 
+// ConfigReader.java — Singleton Pattern  
+public class ConfigReader {  
+    private static final Properties props = new Properties();  
+    private static ConfigReader instance;  
+ 
+    private ConfigReader() {  
+        String env = System.getProperty("env", "dev");  
+        String file = "src/test/resources/config -" + env + ".properties";  
+        try (FileInputStream fis = new FileInputStream(file)) {  
+            props.load(fis);  
+            System.out.println("[ConfigReader] Đang dùng môi trư ờng: " + env);  
+        } catch (IOException e) {  
+            throw new RuntimeException("Không tìm th ấy config: " + file);  
+        } 
+    } 
+ 
+    public static ConfigReader getInstance() {  
+        if (instance == null) instance = new ConfigReader();  
+        return instance;  
+    } 
+ 
+    public String  getBaseUrl()     { return props.getProperty("base.url"); }  
+    public String  getBrowser()     { return props.getProperty("browser", "chrome"); }  
+    public int     getExplicitWait(){ return 
+Integer.parseInt(props.getProperty("explicit.wait","15")); }  
+    public int     getRetryCount()  { return 
+Integer.parseInt(props.getProperty("retry.count","1")); }  
+    public String  getScreenshotPath(){ return props.getProperty("screenshot.path"); }  
+} 
+ 
+// Chạy ở môi trường staging t ừ command line:  
+// mvn test -Denv=staging  
+// Chạy ở môi trường dev (m ặc định): 
+// mvn test  
+ 
+9.8 RetryAnalyzer - Tự động ch ạy lại test b ị fail 
+Trong d ự án th ực, một số test b ị fail không ph ải do l ỗi code mà do m ạng ch ậm, 
+server lag t ạm thời, hay race condition giao di ện. RetryAnalyzer giúp phân bi ệt “lỗi 
+thật” với “lỗi thoáng qua ”: 
+https://gpcoder.com/5384 -lam-the-nao-de-chay -lai-mot-failed -test-trong -junit/  
+ 
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 14 
+ // RetryAnalyzer.java  
+public class RetryAnalyzer implements IRetryAnalyzer {  
+    private int retryCount = 0;  
+ 
+    @Override  
+    public boolean retry(ITestResult result) {  
+        int maxRetry = ConfigReader.getInstance().getRetryCount();  
+        if (retryCount < maxRetry) {  
+            retryCount++;  
+            System.out.println("[Retry] Đang ch ạy lại lần " + retryCount  
+                               + " cho test: " + result.getName());  
+            return true;   // true = ch ạy lại 
+        } 
+        return false;      // false = d ừng, đánh d ấu FAIL  
+    } 
+} 
+ 
+// RetryListener.java — Áp dụng RetryAnalyzer cho m ọi test t ự động 
+public class RetryListener implements IAnnotationTransformer {  
+    @Override  
+    public void transform(ITestAnnotation annotation, Class testClass,  
+                          Constructor testConstructor, Method testMethod) {  
+        annotation.setRetryAnalyzer(RetryAnalyzer.class);  
+        // Không c ần thêm retryAnalyzer = RetryAnalyzer.class vào t ừng @Test  
+    } 
+} 
+ 
+// testng.xml — Đăng ký listener  
+// <listeners>  
+//   <listener class -name="framework.utils.RetryListener"/>  
+// </listeners>  
+ 
+ 
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 15 
+ II. BÀI T ẬP TH ỰC HÀNH  
+ 
+Bài 1  XÂY D ỰNG BASEPAGE VÀ BASETEST (1. 0 điểm) 
+Yêu c ầu: Tạo lớp nền tảng cho toàn b ộ framework. Đây là bư ớc quan tr ọng nh ất - mọi code 
+sau đ ều phụ thuộc vào 2 l ớp này.  
+BasePage (0.5 đi ểm): 
+• Triển khai đ ầy đ ủ 7 method: waitAndClick, waitAndType, getText, 
+isElementVisible, scrollToElement, waitForPageLoad, getAttribute  
+• Tất cả method có Explicit Wait tích h ợp - KHÔNG dùng Thread.sleep()  
+• Xử lý StaleElementReferenceException trong isElementVisible - thực tế hay g ặp khi 
+trang render l ại DOM  
+• Viết Javadoc cho t ừng method gi ải thích m ục đích và trư ờng hợp dùng  
+BaseTest (0.5 đi ểm): 
+• @BeforeMethod nh ận 2 tham s ố từ testng.xml: browser và env. Dùng @Optional đ ể 
+có giá tr ị mặc định 
+• @AfterMethod ch ụp ảnh màn hình và lưu vào thư m ục target/screenshots/ v ới tên = 
+{testName}_{timestamp}.png  
+• Dùng ThreadLocal<WebDriver> - KHÔNG dùng bi ến static  
+• Kiểm tra: Ch ạy song song parallel="methods" thread -count="3" → 3 c ửa sổ Chrome 
+mở cùng lúc, không l ỗi 
+Tiêu chí ch ấm đi ểm 
+• BasePage: comment out 1 method b ất kỳ → compilation error ngay (ch ứng tỏ page 
+objects ph ụ thuộc vào BasePage)  
+• BaseTest: Ch ạy test fail có ý th ức (sai assertion) → ảnh ch ụp màn hình xu ất hiện 
+trong target/screenshots/  
+• Không dùng Thread.sleep() b ất kỳ chỗ nào trong BasePage (dùng grep đ ể kiểm tra)  
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 16 
+  
+Bài 2  XÂY D ỰNG PAGE OBJECTS CHO SAUCEDEMO ( 1.0 điểm) 
+ 
+Tạo 3 Page Object cho website saucedemo.com. Áp d ụng đúng 4 nguyên t ắc POM tìm hi ểu 
+thêm   phần lý thuy ết ở các link đã đưa bên trên. 
+Page Object  Phần tử cần định nghĩa 
+(@FindBy)  Action method c ần triển khai  
+LoginPage  username field, password field, 
+login button, error message  login(user,pass) → InventoryPage 
+loginExpectingFailure(user,pass) → 
+LoginPage getErrorMessage() → 
+String isErrorDisplayed() → 
+boolean  
+InventoryPage  inventory list, cart badge, danh 
+sách s ản phẩm, nút Add to Cart  isLoaded() → boolean 
+addFirstItemToCart() → 
+InventoryPage 
+addItemByName(name) → 
+InventoryPage getCartItemCount() 
+→ int goToCart() → CartPage  
+CartPage  danh sách item trong gi ỏ, nút 
+Remove, nút Checkout  getItemCount() → int 
+removeFirstItem() → CartPage 
+goToCheckout() → CheckoutPage 
+getItemNames() → List<String>  
+ 
+Yêu c ầu kỹ thuật: 
+• Test class KHÔNG đư ợc chứa driver.findElement() hay By.id() - vi ph ạm sẽ bị trừ 
+điểm 
+• Fluent Interface: loginPage.login(u,p).addFirstItemToCart().goToCart() ph ải hoạt 
+động 
+• Xử lý trư ờng hợp CartPage không có item - getItemCount() tr ả về 0, không throw 
+exception  
+• Viết LoginTest và CartTest k ế thừa BaseTest - tổng cộng ít nh ất 6 test method  
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 17 
+  
+Bài 3  DATA -DRIVEN TESTING V ỚI EXCEL ( 1.0 điểm) 
+ 
+Xây d ựng bộ kiểm thử đăng nh ập data -driven. D ữ liệu lưu trong file Excel 
+login_data.xlsx v ới 3 sheet:  
+Sheet  Mục đích  Số dòng data t ối 
+thiểu Các c ột bắt buộc 
+SmokeCases  Happy path — đăng 
+nhập thành công  3 dòng  username | 
+password | 
+expected_url | 
+description  
+NegativeCases  Đăng nh ập thất bại: sai 
+pass, khoá tài kho ản, 
+rỗng 5 dòng  username | 
+password | 
+expected_error | 
+description  
+BoundaryCases  Dữ liệu biên: chu ỗi rất 
+dài, ký t ự đặc biệt, SQL 
+pattern  4 dòng  username | 
+password | 
+expected_error | 
+description  
+ 
+Yêu c ầu kỹ thuật: 
+• ExcelReader.getCellValue() ph ải xử lý cell null và 4 ki ểu dữ liệu: STRING, 
+NUMERIC, BOOLEAN, FORMULA  
+• Khi thêm dòng m ới vào Excel → test t ự động ch ạy thêm case đó, không c ần sửa 
+code Java  
+• Tên test method trong TestNG Report ph ải hiển thị description t ừ Excel (không ch ỉ 
+là testLoginFromExcel[0])  
+• Cấu hình testng.xml: ch ạy groups "smoke" → ch ỉ đọc SmokeCases sheet; groups 
+"regression" → đ ọc tất cả 3 sheet  
+• Chụp màn hình TestNG HTML Report cho th ấy tên test case rõ ràng t ừ cột 
+description  
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 18 
+  
+Bài 4  DATA -DRIVEN TESTING V ỚI JSON + JAVA FAKER (1. 0 điểm) 
+ 
+Triển khai 2 tính năng DDT nâng cao dùng JSON và d ữ liệu sinh ng ẫu nhiên:  
+Phần A: JsonReader (0.5 đi ểm): 
+• Tạo file users.json ch ứa danh sách 5 user v ới các trư ờng: username, password, role, 
+expectSuccess, description  
+• Tạo class UserData POJO v ới Jackson @JsonProperty đ ể mapping tên field JSON 
+sang Java  
+• Triển khai JsonReader.readUsers() và dùng trong @DataProvider  
+• Viết UserLoginTest v ới 5 test case t ừ JSON, ki ểm tra c ả trường hợp SUCCESS và 
+FAILURE  
+Phần B : Java Faker (0.5 đi ểm): 
+• Dùng Java Faker sinh d ữ liệu ngẫu nhiên cho form checkout: firstName, lastName, 
+postalCode  
+• Mỗi lần chạy test sinh d ữ liệu khác nhau - chứng minh b ằng cách ch ạy 2 lần và so 
+sánh log  
+• Tạo TestDataFactory.java t ập trung t ất cả logic sinh data, không scatter kh ắp nơi 
+trong test  class  
+// TestDataFactory.java — Ví dụ gợi ý 
+public class TestDataFactory {  
+    private static final Faker faker = new Faker(new Locale("vi"));  
+ 
+    public static String randomFirstName()  { return faker.name().firstName(); }  
+    public static String randomLastName()   { return faker.name().lastName(); }  
+    public static String randomPostalCode() { return faker.number().digits(5); }  
+    public static String randomEmail()      { return faker.internet().emailAddress(); }  
+ 
+    // Sinh m ột bộ dữ liệu checkout hoàn ch ỉnh 
+    public static Map<String,String> randomCheckoutData() {  
+        return Map.of(  
+            "firstName",  randomFirstName(),  
+            "lastName",   randomLastName(),  
+            "postalCode", randomPostalCode()  
+        ); 
+    } 
+} 
+ 
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 19 
+ Bài 5  CONFIGREADER + ĐA MÔI TRƯ ỜNG (1 .0 điểm) 
+ 
+Triển khai ConfigReader và ki ểm ch ứng framework ch ạy được trên nhi ều môi trư ờng ch ỉ 
+bằng 1 tham s ố, không s ửa code:  
+• Tạo 2 file: config -dev.properties (URL saucedemo.com) và config -
+staging.properties (URL khác, explicit.wait = 20)  
+• ConfigReader dùng Singleton pattern, đ ọc đúng file theo System.getProperty("env", 
+"dev")  
+• BaseTest.setUp() g ọi System.setProperty("env", env) trư ớc khi kh ởi tạo 
+ConfigReader  
+• Demo: ch ạy mvn test -Denv=dev → log hi ển thị "Đang dùng môi trư ờng: dev", 
+explicit wait = 15  
+• Demo: ch ạy mvn test -Denv=staging → log hi ển thị "Đang dùng môi trư ờng: 
+staging", explicit wait = 20  
+• KHÔNG hardcode URL hay timeout ở bất kỳ đâu ngoài file config - vi ph ạm sẽ bị 
+trừ điểm 
+ 
+Bài 6  RETRYANALYZER + FLAKY TEST SIMULATION (1 đi ểm) 
+ 
+Triển khai cơ ch ế retry và ki ểm ch ứng nó ho ạt động đúng b ằng cách mô ph ỏng test không 
+ổn định (flaky test):  
+• Triển khai RetryAnalyzer.java (implements IRetryAnalyzer) đ ọc maxRetry t ừ 
+ConfigReader  
+• Triển khai RetryListener.java (implements IAnnotationTransformer) đ ể áp dụng tự 
+động cho t ất cả test 
+• Đăng ký RetryListener vào testng.xml trong th ẻ <listeners>  
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 20 
+ Tạo test mô ph ỏng flaky:  
+// FlakySimulationTest.java — Mô phỏng test không ổn định 
+public class FlakySimulationTest extends BaseTest {  
+    private static int callCount = 0;  
+ 
+    @Test(description = "Test mô ph ỏng flaky — fail 2 l ần đầu, pass l ần thứ 3") 
+    public void testFlakyScenario() {  
+        callCount++;  
+        System.out.println("[FlakyTest] Đang ch ạy lần thứ: " + callCount);  
+        // Mô ph ỏng: 2 lần đầu fail, l ần thứ 3 mới pass  
+        if (callCount <= 2) {  
+            Assert.fail("Mô ph ỏng lỗi mạng tạm thời — lần " + callCount);  
+        } 
+        Assert.assertTrue(true, "Test pass ở lần thứ " + callCount);  
+    } 
+} 
+• Chạy test trên. TestNG Report ph ải cho th ấy: 2 l ần RETRY → 1 l ần PASS cu ối cùng  
+• Đặt retry.count=0 trong config → test fail ngay l ần đầu, không retry. Ch ụp màn hình 
+so sánh 2 trư ờng hợp 
+Bài 7  DỰ ÁN T ỔNG H ỢP: REFACTOR TOÀN B Ộ CODE (1 .0 điểm) 
+Bài t ập tổng hợp: Lấy toàn b ộ code đã vi ết ở Lab 1 và Lab 2, refactor hoàn toàn sang 
+framework POM + DDT v ừa xây d ựng. Đây là k ỹ năng th ực tế quan tr ọng vì trong công 
+ty, bạn sẽ thường xuyên ph ải nâng c ấp code cũ.  
+Yêu c ầu: 
+1. Tạo git commit TRƯ ỚC khi refactor — để có th ể so sánh before/after (dùng git diff)  
+2. Di chuy ển tất cả locator vào Page Object tương ứng (LoginPage, InventoryPage, 
+CartPage)  
+3. Xóa t ất cả Thread.sleep() — thay b ằng Explicit Wait trong BasePage  
+4. Xóa t ất cả new ChromeDriver() tr ực tiếp — thay b ằng BaseTest.getDriver()  
+5. Di chuy ển dữ liệu test (username, password) ra file Excel ho ặc @DataProvider  
+6. Chạy toàn b ộ suite → 100% PASS. Th ời gian ch ạy phải giảm so v ới code cũ (do 
+loại Thread.sleep)  
+  
+LAB - KIỂM TH Ử PHẦN MỀM      LƯU HÀNH N ỘI BỘ 
+Huynh Kòm – Thị Nở là chân ái    Trang 21 
+ Tổng kết nộp bài:  
+• Chụp màn hình TestNG HTML Report: t ổng số test, s ố pass, s ố fail, th ời gian ch ạy 
+• Chụp màn hình c ấu trúc thư m ục project đúng theo m ẫu (dùng IDE file explorer)  
+• Viết 5 dòng nh ận xét ng ắn: Framework POM giúp ích gì khi so v ới cách vi ết truyển 
+thống ? 
+• GV s ẽ cho thêm bài 3.0 đi ểm sau khi làm xong 7 bài t ập trong lab 9  
+ 
+❖ Lưu ý quan tr ọng cho toàn bài lab  
+1. Mọi @Test ph ải sử dụng getDriver() t ừ BaseTest - không t ạo WebDriver m ới trong 
+test class  
+2. M ọi driver.findElement() ph ải nằm trong Page Object - không vi ết trực tiếp trong 
+test 
+3. Tất cả dữ liệu test (URL, username, password) ph ải đọc từ file config ho ặc 
+Excel/JSON  
+4. Không dùng Thread.sleep() – sẽ bị trừ 0.5 đi ểm mỗi lần phát hi ện 
+5. Nộp file Excel test data cùng v ới source code  
+ 
+ 
+HẾT LAB 9  
+GOOD LUCK!  
+Được Học Là Ni ềm Vui – Làm Bài T ập Là Đam M ê! 

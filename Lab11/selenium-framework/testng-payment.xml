@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="Payment Test Suite" parallel="methods" thread-count="3">
+    <listeners>
+        <listener class-name="framework.utils.RetryListener"/>
+    </listeners>
+    <test name="Payment Tests">
+        <parameter name="browser" value="chrome"/>
+        <parameter name="env" value="dev"/>
+        <groups>
+            <run>
+                <include name="payment"/>
+            </run>
+        </groups>
+        <!-- Thêm các class PaymentTest khi được develop -->
+        <classes>
+            <class name="tests.LoginTest"/>
+        </classes>
+    </test>
+</suite>
